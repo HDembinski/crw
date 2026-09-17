@@ -486,7 +486,13 @@ console.log(body.data.markdown);</code></pre></div><div class="code-tab-panel" d
 <td><code>maxAge</code></td>
 <td>number</td>
 <td><code>3600000</code></td>
-<td>Cloud only. How old a cached copy of this exact request may be, in milliseconds. <code>0</code> forces a fresh fetch. Capped at 24 hours. See <a href="#caching">Caching</a></td>
+<td>How old a cached copy of this fetch may be, in milliseconds. <code>0</code> forces a fresh fetch. Capped at 24 hours. See <a href="#caching">Caching</a></td>
+</tr>
+<tr>
+<td><code>storeInCache</code></td>
+<td>boolean</td>
+<td><code>true</code></td>
+<td><code>false</code> reads the cache but stores nothing</td>
 </tr>
 <tr>
 <td><code>country</code></td>
@@ -574,10 +580,17 @@ console.log(body.data.markdown);</code></pre></div><div class="code-tab-panel" d
 </tr>
 </tbody></table>
 <h2 id="caching">Caching</h2>
-<p>On the hosted API an identical repeat of the same request is served from cache
-for one hour by default. Identical means the whole request body: a different
-<code>formats</code>, <code>renderer</code>, <code>onlyMainContent</code> or <code>country</code> is a different request and
-fetches fresh. Caches are per account, never shared between customers.</p>
+<p>A repeat of the same fetch is served from cache for one hour by default. What
+is cached is the FETCH, not the answer, so what counts as identical is what
+would change the page the server gets back: the URL, <code>renderer</code>, <code>renderJs</code>,
+<code>waitFor</code>, <code>country</code>, and any headers you send. Everything you do with the page
+afterwards is not part of it, so a second pass with different <code>formats</code>,
+<code>onlyMainContent</code>, selectors or a different extraction schema reuses the fetch
+instead of paying for it again.</p>
+<p>Requests that carry anything caller-specific are never cached at all: your own
+headers, your own proxy, a stealth override, or a screenshot. A cached page is
+therefore only ever a plain anonymous fetch of a public URL, byte for byte what
+any caller would have received.</p>
 <pre data-lang="json"><code class="language-json">{ &quot;url&quot;: &quot;https://example.com&quot;, &quot;formats&quot;: [&quot;markdown&quot;], &quot;maxAge&quot;: 0 }</code></pre>
 <p>Use <code>maxAge</code> to choose your own trade-off:</p>
 <table>
@@ -602,6 +615,8 @@ fetches fresh. Caches are per account, never shared between customers.</p>
 </tbody></table>
 <p><code>0</code> disables the cache for that call and always fetches. The ceiling is 24 hours,
 so a page can never be pinned for longer than a day.</p>
+<p>A response served from cache says so: <code>cached: true</code> on <code>/v1</code>, and
+<code>metadata.cacheState: &quot;hit&quot;</code> on the Firecrawl-compatible surface.</p>
 <p>Two things are never cached, whatever you pass:</p>
 <ul>
 <li><strong><code>changeTracking</code>.</strong> It compares a live fetch against the <code>previous</code> snapshot

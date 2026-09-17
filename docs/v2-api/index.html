@@ -1192,8 +1192,8 @@ const result = await crw.extract({
 </tr>
 <tr>
 <td><code>metadata.cacheState</code></td>
-<td>not present</td>
-<td>always <code>&quot;miss&quot;</code> (no cache yet)</td>
+<td><code>cached</code> (omitted when false)</td>
+<td><code>&quot;hit&quot;</code> or <code>&quot;miss&quot;</code></td>
 </tr>
 <tr>
 <td><code>metadata.concurrencyLimited</code></td>
@@ -1232,7 +1232,9 @@ const result = await crw.extract({
 <li><code>&quot;stealth&quot;</code> — residential Chrome proxy tier, activated by <code>proxy: &quot;stealth&quot;</code>.</li>
 </ul>
 <h3 id="cachestate"><code>cacheState</code></h3>
-<p>Always <code>&quot;miss&quot;</code> in the current engine. The field exists for Firecrawl SDK compatibility.</p>
+<p><code>&quot;hit&quot;</code> when the page was replayed from the fetch cache, <code>&quot;miss&quot;</code> when it was
+fetched. <code>maxAge</code> and <code>storeInCache</code> are honoured on this surface: see
+<a href="scraping.md#caching">Caching</a> for what is cached and what never is.</p>
 <hr>
 <h2 id="v2-formats">V2 formats</h2>
 <p>v2 <code>formats</code> accepts a mix of bare strings and typed objects.</p>
