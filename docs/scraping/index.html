@@ -587,10 +587,9 @@ would change the page the server gets back: the URL, <code>renderer</code>, <cod
 afterwards is not part of it, so a second pass with different <code>formats</code>,
 <code>onlyMainContent</code>, selectors or a different extraction schema reuses the fetch
 instead of paying for it again.</p>
+<p>Caches are per account, never shared between customers.</p>
 <p>Requests that carry anything caller-specific are never cached at all: your own
-headers, your own proxy, a stealth override, or a screenshot. A cached page is
-therefore only ever a plain anonymous fetch of a public URL, byte for byte what
-any caller would have received.</p>
+headers, your own proxy, a stealth override, or a screenshot.</p>
 <pre data-lang="json"><code class="language-json">{ &quot;url&quot;: &quot;https://example.com&quot;, &quot;formats&quot;: [&quot;markdown&quot;], &quot;maxAge&quot;: 0 }</code></pre>
 <p>Use <code>maxAge</code> to choose your own trade-off:</p>
 <table>
