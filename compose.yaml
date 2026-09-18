@@ -56,10 +56,16 @@ services:
       - CRW_RENDERER__CHROME_CONTEXT_POOL_ENABLED=${CRW_RENDERER__CHROME_CONTEXT_POOL_ENABLED:-true}
       - CRW_RENDERER__CHROME_BACKEND=${CRW_RENDERER__CHROME_BACKEND:-vanilla}
       - CRW_RENDERER__CHROME_POOL__SIZE=${CRW_RENDERER__CHROME_POOL__SIZE:-4}
-      # LOCAL (merged from docker-compose.stealth.yml): route the chrome tier
-      # at the stealth container. Traffic stays on the docker bridge; the
-      # host port 9224 is for a host-run crw-server only.
-      - CRW_RENDERER__CHROME_WS_URL=ws://chrome-stealth:3000/chromium?token=${BROWSERLESS_TOKEN:-crwtest}&stealth=true
+      # LOCAL (merged from docker-compose.stealth.yml, NAME FIXED): route the
+      # chrome tier at the stealth container. The vendor file's
+      # CRW_RENDERER__CHROME_WS_URL is a latent bug — the config-crate env
+      # mapper (prefix CRW, separator "__") needs a double underscore for the
+      # nested [renderer.chrome] section, or it maps to a nonexistent key and
+      # is silently ignored (crw then dials the config default chrome:9222).
+      # Verified in crates/crw-core/src/config.rs. Env wins over the file.
+      # Traffic stays on the docker bridge; host port 9224 is for a
+      # host-run crw-server only.
+      - CRW_RENDERER__CHROME__WS_URL=ws://chrome-stealth:3000/chromium?token=${BROWSERLESS_TOKEN:-crwtest}&stealth=true
     volumes:
       - ./config.docker.toml:/app/config.docker.toml:ro
     # ── Host protection (defense-in-depth for untrusted PDF/scrape input) ──
@@ -68,8 +74,12 @@ services:
     # cgroup) can never exceed it — the host stays safe. With config.docker.toml
     # `[document] sandbox = true`, each parse runs in a child with its own
     # RLIMIT_AS, so peak ≈ base + max_concurrent_parses × sandbox_memory.
-    mem_limit: 2g
-    memswap_limit: 2g          # no swap escape hatch — count swap against the cap
+    # LOCAL: 2g -> 1g. The 2g covered worst-case concurrent PDF-sandbox
+    # children (N x RLIMIT_AS); this box does interactive scraping, and the
+    # server's working set is tens of MB. Cap only matters under load a
+    # single agent doesn't produce.
+    mem_limit: 1g
+    memswap_limit: 1g          # no swap escape hatch — count swap against the cap
     pids_limit: 512            # bound fork-bombs / runaway worker spawning
     read_only: true            # immutable root FS; nothing the parser can drop survives
     tmpfs:
@@ -127,8 +137,10 @@ services:
       - "--block-cidrs"
       - "0.0.0.0/8,10.0.0.0/8,127.0.0.0/8,169.254.0.0/16,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10,224.0.0.0/4,240.0.0.0/4,192.0.0.0/24,192.0.2.0/24,198.18.0.0/15,198.51.100.0/24,203.0.113.0/24,fc00::/7,fe80::/10,fec0::/10,ff00::/8,::/96,64:ff9b:1::/48,2002::/16"
     restart: unless-stopped
-    mem_limit: 1g
-    memswap_limit: 1g
+    # LOCAL: 1g -> 512m. ~64 MB baseline; OOM on an adversarial SPA is the
+    # designed escalation trigger (restart: unless-stopped, chrome takes over).
+    mem_limit: 512m
+    memswap_limit: 512m
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9222"]
       interval: 30s
@@ -212,7 +224,9 @@ services:
       # Default is a published placeholder; override via `.env` in production:
       #   echo "BROWSERLESS_TOKEN=$(openssl rand -hex 24)" >> .env
       - TOKEN=${BROWSERLESS_TOKEN:-crwtest}
-      - CONCURRENT=15
+      # LOCAL: 15 -> 4. The 15 is the vendor's bench-host sweet spot; 15
+      # parallel chromium sessions on a memory-limited pi is a swap storm.
+      - CONCURRENT=4
       - MAX_QUEUE_LENGTH=30
       - TIMEOUT=30000
       # Kill the container instead of accepting traffic in a degraded state;
@@ -220,8 +234,9 @@ services:
       - EXIT_ON_HEALTH_FAILURE=true
     shm_size: "2g"
     restart: unless-stopped
-    mem_limit: 3g
-    memswap_limit: 3g
+    # LOCAL: 3g -> 2g (with CONCURRENT=4 above; ~300 MB per session).
+    mem_limit: 2g
+    memswap_limit: 2g
     # Confine browserless's user-data-dirs and downloads to tmpfs so a
     # runaway session can't fill the host disk (we hit ENOSPC during
     # bench tuning when this was missing). Browserless v2 writes session
