@@ -1,7 +1,8 @@
 # Single-file crw stack for this host — merged from us/crw @ v0.35.1
 # (docker-compose.yml + docker-compose.stealth.yml) with local changes:
-#   * searxng published on 0.0.0.0:8888 — the sandbox's web_search talks
-#     to it directly
+#   * search backend pointed at the EXISTING standalone SearXNG
+#     (http://192.168.50.143:8888) via CRW_SEARCH__SEARXNG_URL — the
+#     vendor's bundled `searxng` service is removed from this file
 #   * every pulled image pinned (digests verified 2026-09-18)
 #   * chrome-stealth is ALWAYS ON (profile removed) — it is our stealth tier;
 #     the crw service routes its chrome tier at it via
@@ -38,13 +39,13 @@ services:
       chrome-stealth:
         condition: service_started
         required: false
-      # SearXNG sidecar — backs `/v1/search`. Wait for healthy so the first
-      # search request after `compose up` doesn't race the cold start.
-      searxng:
-        condition: service_healthy
     environment:
       - RUST_LOG=info
       - CRW_CONFIG=config.docker
+      # LOCAL: point /v1/search at the existing standalone SearXNG on the
+      # host (the vendor's bundled searxng service is removed below). This
+      # is the vendor-supported override — env wins over config.docker.toml.
+      - CRW_SEARCH__SEARXNG_URL=http://192.168.50.143:8888
       # Bench knob passthrough (I4 fix): bench/run_pool_bench.sh sets these
       # to flip pool on/off across two passes without editing config.docker.toml.
       # Defaults match the §B5-flipped config.docker.toml values (pool=on,
@@ -78,68 +79,9 @@ services:
     security_opt:
       - no-new-privileges:true # a child can never gain privileges via setuid
 
-  # Meta-search backend for `/v1/search`. Pinned to a dated tag (never `:latest`)
-  # so upgrades are deliberate.
-  #
-  # AGPL / SearXNG attribution: SearXNG is a separate AGPL-3.0 work
-  # (https://github.com/searxng/searxng). We ship the upstream image unmodified
-  # and mount our own config read-only — we do NOT build a derived image.
-  # This is the lowest-risk packaging for §6/§13 obligations: each container
-  # runs its own program from its own publisher, with no rebundling. Operators
-  # who deploy this stack to third parties are still responsible for SearXNG's
-  # corresponding-source obligations on their own (the upstream image satisfies
-  # this for unmodified deployments). If you fork SearXNG or `settings.yml`,
-  # publish your changes alongside the deployment per AGPL §13.
-  #
-  # No Valkey/Redis: `server.limiter` and engine cache are off in settings.yml,
-  # so the in-memory fallback is sufficient. Rate limiting is handled by
-  # crw-server's own middleware.
-  #
-  # The container is reachable to other services as `searxng:8080`. We do NOT
-  # publish the port to the host by default — search should only flow through
-  # /v1/search. To debug directly, add `ports: ["127.0.0.1:8888:8080"]` in
-  # docker-compose.override.yml.
-  searxng:
-    # LOCAL: dated tag replaced by the equivalent digest (verified 2026-09-18).
-    image: searxng/searxng@sha256:b5d4892daf19736acdefc34a67bb06dd702638beb282e993aeb612e0953c2d54
-    restart: unless-stopped
-    ports:
-      # LOCAL: published so the sandbox's web_search can talk to this
-      # instance directly (the vendor file keeps it internal-only on :8080).
-      - "0.0.0.0:8888:8080"
-    # Hardening: SearXNG handles arbitrary user queries and proxies third-party
-    # engines, so it has the largest abuse surface in this stack. We strip
-    # everything it doesn't need and bound resource use so a runaway worker
-    # can't take the host with it.
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    mem_limit: 512m
-    memswap_limit: 512m
-    pids_limit: 256
-    environment:
-      - SEARXNG_BASE_URL=http://searxng:8080/
-      # Generate with `openssl rand -hex 32` and put in `.env` for production.
-      # The default below is acceptable for local/internal-only deployments
-      # because the limiter is off and the port isn't published.
-      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-change-me-with-openssl-rand-hex-32-please}
-    volumes:
-      - ./config/searxng/settings.yml:/etc/searxng/settings.yml:ro
-    # SearXNG writes runtime cache + uwsgi state under /var/cache + /tmp; with
-    # `read_only: true` we route those to tmpfs so the container itself stays
-    # immutable while the writable scratch space stays in RAM (and gets freed
-    # on restart).
-    tmpfs:
-      - /tmp:size=64m
-      - /var/cache/searxng:size=128m
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
+  # LOCAL NOTE: the vendor's `searxng` service was removed here. /v1/search
+  # uses the existing standalone SearXNG on the host (see
+  # CRW_SEARCH__SEARXNG_URL in the crw service above).
 
   # Primary JS renderer — lightweight (~64 MB), fast startup.
   # Handles most static-JS sites. Falls back to Chrome for complex SPAs.
